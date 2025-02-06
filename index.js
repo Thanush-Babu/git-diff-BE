@@ -2,20 +2,14 @@ const express = require('express');
 const axios = require('axios');
 const dotenv = require('dotenv');
 const cors = require("cors");
-// const diffParser = require('parse-diff');
 
 dotenv.config();
 const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Middleware to parse JSON requests
 app.use(express.json());
 app.use(cors());
 
-// GitHub API configuration
-// const GITHUB_API_URL = 'https://api.github.com';
-// const GITHUB_TOKEN = process.env.GITHUB_TOKEN; // I used Github Personal access token to increase the api request limit from 50/hr to 5000/hr
-console.log(process.env.GITHUB_API_URL)
 // Axios instance for GitHub API
 const githubApi = axios.create({
   baseURL: process.env.GITHUB_API_URL,
@@ -35,17 +29,18 @@ app.get('/repositories/:owner/:repository/commits/:oid', async (req, res) => {
 
     // Transforming GitHub response to match the given schema in FS DEV github API Documentation 
     const formattedCommit = {
-      oid: commitData.sha,
-      message: commitData.commit.message,
+      oid: commitData?.sha ||'',
+      message: commitData?.commit?.message,
       author: {
-        name: commitData.commit.author.name,
-        date: commitData.commit.author.date,
-        email: commitData.commit.author.email,
+        name: commitData?.commit?.author?.name ||'',
+        date: commitData?.commit?.author?.date ||'',
+        email: commitData?.commit?.author?.email ||'',
+        avatar_url: commitData?.author?.avatar_url ||'',
       },
       committer: {
-        name: commitData.commit.committer.name,
-        date: commitData.commit.committer.date,
-        email: commitData.commit.committer.email,
+        name: commitData?.commit?.committer?.name ||'',
+        date: commitData?.commit?.committer?.date ||'',
+        email: commitData?.commit?.committer?.email ||'',
       },
       parents: commitData.parents.map(parent => ({ oid: parent.sha })),
     };
@@ -67,24 +62,25 @@ app.get('/repositories/:owner/:repository/commits/:oid/diff', async (req, res) =
 
   try {
       const commitResponse = await axios.get(`${process.env.GITHUB_API_URL}/repos/${owner}/${repository}/commits/${oid}`);
-      const parentOid = commitResponse.data.parents[0].sha;
-      const diffResponse = await axios.get(`${process.env.GITHUB_API_URL}/repos/${owner}/${repository}/compare/${parentOid}...${oid}`);
+      const parentOid = commitResponse?.data?.parents[0]?.sha;
+      if(parentOid) {
+        const diffResponse = await axios.get(`${process.env.GITHUB_API_URL}/repos/${owner}/${repository}/compare/${parentOid}...${oid}`);   
+        const files = diffResponse.data.files.map(file => ({
+            changeKind: file.status.toUpperCase(),
+            headFile: {
+                path: file.filename
+            },
+            baseFile: {
+                path: file.filename
+            },
+            hunks: file.patch ? parsePatch(file.patch) : []
+        }));
+  
+        res.json(files);
+      }
       
-      const files = diffResponse.data.files.map(file => ({
-          changeKind: file.status.toUpperCase(),
-          headFile: {
-              path: file.filename
-          },
-          baseFile: {
-              path: file.filename
-          },
-          hunks: file.patch ? parsePatch(file.patch) : []
-      }));
-
-      res.json(files);
   } catch (error) {
-      // res.status(error.response.status).json({ error: error.response.data });
-      res.status(error.response?.status).json({ error: error.response?.data });
+      res.status(error?.response?.status).json({ error: error?.response?.data });
   }
 });
 
@@ -135,6 +131,6 @@ function parsePatch(patch) {
   return hunks;
 }
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
+app.listen(process.env.PORT, () => {
+  console.log(`Server is running on http://localhost:${process.env.PORT}`);
 });
